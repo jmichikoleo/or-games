@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shift — the rescheduling game</title>
+<style>
+:root{
+  --bg:#FAF9F6; --paper:#FFFFFF; --line:#E6E2DA; --line2:#F0EDE7;
+  --ink:#1D1C1A; --dim:#8C877D; --faint:#B3AEA4;
+  --accent:#5C7A63;        /* sage */
+  --clay:#B9714E;
+  --gold:#B48A2E;
+  --brick:#B4544B;
+  --slot:36px; --row:58px;
+  --sans:ui-sans-serif,-apple-system,"SF Pro Text",Inter,"Helvetica Neue",system-ui,sans-serif;
+  --serif:"Iowan Old Style","Palatino Linotype",Palatino,Georgia,serif;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased}
+.wrap{max-width:1040px;margin:0 auto;padding:44px 24px 72px}
+
+/* ---------- header ---------- */
+header{display:flex;align-items:flex-end;gap:20px;flex-wrap:wrap;padding-bottom:18px;border-bottom:1px solid var(--line)}
+.logo{font-family:var(--serif);font-size:30px;font-weight:400;letter-spacing:-.4px;line-height:1}
+.tag{color:var(--faint);font-size:12px;letter-spacing:.14em;text-transform:uppercase;margin-top:8px}
+.hstats{margin-left:auto;display:flex;gap:26px;flex-wrap:wrap}
+.stat{text-align:right}
+.stat .k{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+.stat .v{font-size:19px;font-variant-numeric:tabular-nums;font-family:var(--serif)}
+
+/* ---------- level bar ---------- */
+.levelbar{display:flex;align-items:baseline;gap:14px;padding:26px 0 20px}
+.lvnum{font-family:var(--serif);font-size:13px;color:var(--faint);letter-spacing:.14em;text-transform:uppercase}
+.lvname{font-family:var(--serif);font-size:22px}
+.lvsub{color:var(--dim);font-size:13px;line-height:1.5;max-width:52ch;margin-top:4px}
+.dots{margin-left:auto;display:flex;gap:7px;align-self:center}
+.dot{width:7px;height:7px;border-radius:50%;border:1px solid var(--faint)}
+.dot.done{background:var(--accent);border-color:var(--accent)}
+.dot.now{background:var(--ink);border-color:var(--ink)}
+
+/* ---------- metrics ---------- */
+.metrics{display:grid;grid-template-columns:repeat(4,1fr);border:1px solid var(--line);border-radius:4px;background:var(--paper);margin-bottom:18px}
+.metric{padding:14px 18px;border-right:1px solid var(--line2)}
+.metric:last-child{border-right:none}
+.metric .k{font-size:10px;letter-spacing:.14em;text-transform:uppercase;color:var(--faint)}
+.metric .v{font-size:26px;font-family:var(--serif);font-variant-numeric:tabular-nums;line-height:1.25;transition:color .2s}
+.metric .p{font-size:11px;color:var(--faint)}
+.metric.ok .v{color:var(--accent)} .metric.bad .v{color:var(--brick)} .metric.warn .v{color:var(--gold)}
+
+/* ---------- board ---------- */
+.boardwrap{position:relative;background:var(--paper);border:1px solid var(--line);border-radius:4px;padding:16px 18px;display:flex}
+.labels{width:96px;flex:none;padding-top:24px}
+.label{height:var(--row);display:flex;align-items:center;font-size:12px;color:var(--dim);letter-spacing:.03em}
+.scroller{flex:1;overflow-x:auto;overflow-y:hidden;padding-bottom:6px}
+.ruler{height:24px;position:relative}
+.tick{position:absolute;top:2px;font-size:10px;color:var(--faint);transform:translateX(-50%);font-variant-numeric:tabular-nums}
+.board{position:relative;touch-action:none}
+.rowbg{position:absolute;left:0;right:0;height:var(--row);border-top:1px solid var(--line2)}
+.rowbg:last-of-type{border-bottom:1px solid var(--line2)}
+.grid{position:absolute;inset:0;background-image:linear-gradient(90deg,var(--line2) 1px,transparent 1px);background-size:calc(var(--slot)*2) 100%;pointer-events:none}
+
+.blk{position:absolute;height:calc(var(--row) - 16px);margin-top:8px;border-radius:3px;
+  background:#F6F4EF;border:1px solid var(--line);color:var(--ink);
+  padding:0 9px;cursor:grab;user-select:none;
+  display:flex;flex-direction:column;justify-content:center;overflow:hidden;
+  transition:background .15s,border-color .15s,box-shadow .15s;}
+.blk .n{font-size:12px;font-weight:600;letter-spacing:.02em;line-height:1.2;white-space:nowrap}
+.blk .d{font-size:10px;color:var(--dim);white-space:nowrap;font-variant-numeric:tabular-nums}
+.blk.moved{background:#EEF3EE;border-color:#BCCFBE}
+.blk.new{background:#F7EDE6;border-color:#DFC0AA}
+.blk.new .n{color:var(--clay)}
+.blk.late{background:#FAECEA;border-color:#E2B2AD}
+.blk.late .n{color:var(--brick)}
+.blk.clash{border-color:var(--brick);box-shadow:0 0 0 2px rgba(180,84,75,.15);animation:buzz .3s}
+.blk.sel{box-shadow:0 0 0 2px rgba(29,28,26,.14);border-color:var(--ink)}
+.blk.drag{cursor:grabbing;box-shadow:0 8px 20px rgba(30,26,20,.14);z-index:9}
+.blk.locked{cursor:not-allowed;color:var(--dim);border-color:#DCD7CD;
+  background:repeating-linear-gradient(45deg,#F2EFE9,#F2EFE9 5px,#E8E4DC 5px,#E8E4DC 10px)}
+.blk.pin{opacity:.72;cursor:default}
+@keyframes buzz{25%{transform:translateX(-2px)}75%{transform:translateX(2px)}}
+
+/* ---------- controls ---------- */
+.controls{display:flex;gap:10px;margin-top:20px;flex-wrap:wrap;align-items:center}
+button{font:inherit;font-size:13px;border-radius:3px;border:1px solid var(--line);background:var(--paper);
+  color:var(--ink);padding:10px 18px;cursor:pointer;letter-spacing:.02em;transition:.15s}
+button:hover:not(:disabled){border-color:var(--ink)}
+button:disabled{opacity:.4;cursor:not-allowed}
+button.primary{background:var(--ink);border-color:var(--ink);color:#FBFAF8}
+button.primary:hover:not(:disabled){background:#000}
+button.ghost{border-color:transparent;color:var(--dim);padding-left:8px;padding-right:8px}
+button.ghost:hover{color:var(--ink);border-color:transparent;text-decoration:underline}
+.hint{color:var(--faint);font-size:11.5px;margin-left:auto;letter-spacing:.02em}
+kbd{border:1px solid var(--line);border-radius:3px;padding:1px 5px;font-size:10.5px;font-family:ui-monospace,monospace;color:var(--dim)}
+
+/* ---------- overlay ---------- */
+.ovl{position:absolute;inset:0;background:rgba(250,249,246,.94);backdrop-filter:blur(2px);
+  display:grid;place-items:center;text-align:center;padding:28px;z-index:20;border-radius:4px}
+.ovl h2{margin:0 0 10px;font-family:var(--serif);font-size:26px;font-weight:400}
+.ovl p{margin:0 0 22px;color:var(--dim);max-width:46ch;font-size:13.5px;line-height:1.65}
+.stars{font-size:22px;letter-spacing:10px;margin:6px 0 14px}
+.star{color:#DDD8CE} .star.on{color:var(--gold)}
+.scoreline{font-size:12.5px;color:var(--dim);margin-bottom:22px;line-height:2}
+.scoreline b{color:var(--ink);font-weight:600}
+.hidden{display:none!important}
+
+/* ---------- toast ---------- */
+.toasts{position:fixed;top:22px;left:50%;transform:translateX(-50%);z-index:60;display:flex;flex-direction:column;gap:8px;align-items:center;pointer-events:none}
+.toast{background:var(--paper);border:1px solid var(--line);border-left:2px solid var(--clay);
+  color:var(--ink);padding:11px 18px;border-radius:3px;font-size:12.5px;
+  box-shadow:0 10px 28px rgba(40,34,24,.09);animation:pop .3s}
+.toast.good{border-left-color:var(--accent)}
+@keyframes pop{from{transform:translateY(-8px);opacity:0}}
+
+/* ---------- legend ---------- */
+.legend{display:flex;gap:18px;flex-wrap:wrap;color:var(--faint);font-size:11px;margin-top:16px;letter-spacing:.02em}
+.legend i{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:6px;vertical-align:-1px;border:1px solid rgba(0,0,0,.08)}
+.confetti{position:fixed;width:6px;height:10px;z-index:80;pointer-events:none;border-radius:1px}
+@media(max-width:760px){.metrics{grid-template-columns:repeat(2,1fr)}
+  .metric:nth-child(2){border-right:none}.metric:nth-child(-n+2){border-bottom:1px solid var(--line2)}
+  .labels{width:70px}.wrap{padding:28px 16px 60px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div>
+    <div class="logo">Shift</div>
+    <div class="tag">a rescheduling game</div>
+  </div>
+  <div class="hstats">
+    <div class="stat"><div class="k">Score</div><div class="v" id="hScore">0</div></div>
+    <div class="stat"><div class="k">Streak</div><div class="v" id="hStreak">0</div></div>
+    <div class="stat"><div class="k">Best</div><div class="v" id="hBest">0</div></div>
+    <div class="stat"><div class="k">Time</div><div class="v" id="hTime">0s</div></div>
+  </div>
+</header>
+
+<div class="levelbar">
+  <div>
+    <div class="lvnum" id="lvNum">Shift 1</div>
+    <div class="lvname" id="lvName">—</div>
+    <div class="lvsub" id="lvSub">—</div>
+  </div>
+  <div class="dots" id="dots"></div>
+</div>
+
+<div class="metrics">
+  <div class="metric" id="mFeas"><div class="k">Feasible</div><div class="v">—</div><div class="p">no overlaps</div></div>
+  <div class="metric" id="mTard"><div class="k">Tardiness</div><div class="v">0</div><div class="p">par 0</div></div>
+  <div class="metric" id="mMove"><div class="k">Deviation</div><div class="v">0</div><div class="p">par 0 moves</div></div>
+  <div class="metric" id="mSpan"><div class="k">Makespan</div><div class="v">0</div><div class="p">last job ends</div></div>
+</div>
+
+<div class="boardwrap" id="boardwrap">
+  <div class="labels" id="labels"></div>
+  <div class="scroller" id="scroller">
+    <div class="ruler" id="ruler"></div>
+    <div class="board" id="board"></div>
+  </div>
+
+  <div class="ovl" id="ovlStart">
+    <div>
+      <h2 id="ovlTitle">Shift 1 — Line A goes down</h2>
+      <p id="ovlText">The plan is clean. Then reality arrives.</p>
+      <button class="primary" id="btnStart">Start shift</button>
+    </div>
+  </div>
+
+  <div class="ovl hidden" id="ovlEnd">
+    <div>
+      <h2 id="endTitle">Shift recovered</h2>
+      <div class="stars" id="endStars"><span class="star">★</span><span class="star">★</span><span class="star">★</span></div>
+      <div class="scoreline" id="endScore"></div>
+      <button class="primary" id="btnNext">Next shift</button>
+      <button class="ghost" id="btnRetry">Retry</button>
+    </div>
+  </div>
+</div>
+
+<div class="controls">
+  <button class="primary" id="btnSubmit" disabled>Lock in schedule</button>
+  <button id="btnReset" disabled>Reset</button>
+  <button id="btnHint" disabled>Hint</button>
+  <button class="ghost" id="btnWipe">Clear save</button>
+  <div class="hint">Drag blocks · <kbd>←</kbd> <kbd>→</kbd> time · <kbd>↑</kbd> <kbd>↓</kbd> machine</div>
+</div>
+
+<div class="legend">
+  <span><i style="background:#F6F4EF"></i>original plan</span>
+  <span><i style="background:#EEF3EE"></i>moved by you</span>
+  <span><i style="background:#F7EDE6"></i>rush order</span>
+  <span><i style="background:#FAECEA"></i>late</span>
+  <span><i style="background:repeating-linear-gradient(45deg,#F2EFE9,#F2EFE9 3px,#E8E4DC 3px,#E8E4DC 6px)"></i>machine down</span>
+</div>
+</div>
+
+<div class="toasts" id="toasts"></div>
+
+<script>
+/* ============================================================
+   LEVEL DATA
+   job: id, m(machine idx), start, dur, due, elig(optional)
+   disruptions: breakdown | rush | delay
+   ============================================================ */
+const LEVELS = [
+{
+  name:"Line A goes down", sub:"A four-slot breakdown lands in the middle of Line A.",
+  machines:["Line A","Line B"], horizon:14,
+  jobs:[
+    {id:"J1",m:0,start:0,dur:3,due:4},
+    {id:"J2",m:0,start:3,dur:3,due:8},
+    {id:"J3",m:0,start:6,dur:2,due:10},
+    {id:"J4",m:1,start:0,dur:4,due:6},
+    {id:"J5",m:1,start:4,dur:3,due:11}
+  ],
+  disruptions:[{type:"breakdown",m:0,start:3,dur:4,text:"Line A is down from t=3 to t=7"}],
+  par:{tard:0,moves:3}
+},
+{
+  name:"Rush order", sub:"A customer paid for priority. It has to finish by t=4.",
+  machines:["Cell 1","Cell 2","Cell 3"], horizon:16,
+  jobs:[
+    {id:"A1",m:0,start:0,dur:4,due:10},
+    {id:"A2",m:0,start:4,dur:3,due:12},
+    {id:"B1",m:1,start:0,dur:3,due:8},
+    {id:"B2",m:1,start:3,dur:5,due:14},
+    {id:"C1",m:2,start:0,dur:5,due:9},
+    {id:"C2",m:2,start:5,dur:3,due:15}
+  ],
+  disruptions:[{type:"rush",job:{id:"RUSH",m:1,start:8,dur:3,due:4},text:"Rush order RUSH arrived — due t=4"}],
+  par:{tard:0,moves:2}
+},
+{
+  name:"Slow batch", sub:"P2 hit a quality hold. It now takes twice as long.",
+  machines:["Oven","Press","Pack"], horizon:18,
+  jobs:[
+    {id:"P1",m:0,start:0,dur:4,due:12},
+    {id:"P2",m:0,start:4,dur:4,due:15},
+    {id:"P3",m:0,start:8,dur:3,due:16},
+    {id:"Q1",m:1,start:0,dur:5,due:10},
+    {id:"Q2",m:1,start:5,dur:4,due:15},
+    {id:"R1",m:2,start:0,dur:3,due:7},
+    {id:"R2",m:2,start:3,dur:6,due:16}
+  ],
+  disruptions:[{type:"delay",id:"P2",add:4,text:"P2 runs four slots longer than planned"}],
+  par:{tard:0,moves:1}
+},
+{
+  name:"Double trouble", sub:"A breakdown and a rush order in the same hour. D3 only runs on Press or Pack.",
+  machines:["Mill","Press","Pack"], horizon:20,
+  jobs:[
+    {id:"D1",m:0,start:0,dur:3,due:14},
+    {id:"D2",m:0,start:3,dur:3,due:15},
+    {id:"D3",m:1,start:0,dur:5,due:16,elig:[1,2]},
+    {id:"D4",m:1,start:5,dur:4,due:18},
+    {id:"D5",m:2,start:0,dur:4,due:16},
+    {id:"D6",m:2,start:4,dur:4,due:18}
+  ],
+  disruptions:[
+    {type:"breakdown",m:1,start:2,dur:6,text:"Press is down from t=2 to t=8"},
+    {type:"rush",job:{id:"X",m:2,start:8,dur:3,due:5},text:"Rush order X arrived — due t=5"}
+  ],
+  par:{tard:0,moves:3}
+},
+{
+  name:"Cascade", sub:"A long outage on Line 1 plus an overrun on F1. Nine jobs, no slack to waste.",
+  machines:["Line 1","Line 2","Line 3"], horizon:22,
+  jobs:[
+    {id:"E1",m:0,start:0,dur:4,due:8},
+    {id:"E2",m:0,start:4,dur:4,due:18},
+    {id:"E3",m:0,start:8,dur:4,due:20},
+    {id:"F1",m:1,start:0,dur:6,due:10,elig:[1]},
+    {id:"F2",m:1,start:6,dur:4,due:20},
+    {id:"F3",m:1,start:10,dur:4,due:22},
+    {id:"G1",m:2,start:0,dur:5,due:9},
+    {id:"G2",m:2,start:5,dur:4,due:19},
+    {id:"G3",m:2,start:9,dur:4,due:21}
+  ],
+  disruptions:[
+    {type:"breakdown",m:0,start:4,dur:8,text:"Line 1 is down from t=4 to t=12"},
+    {type:"delay",id:"F1",add:2,text:"F1 overruns by two slots"}
+  ],
+  par:{tard:0,moves:4}
+}
+];
+
+/* ============================================================ STATE */
+const SAVE_KEY="shift_resched_v1";
+const S={idx:0,jobs:[],breaks:[],machines:[],horizon:14,live:false,sel:null,t0:0,timer:null,
+         total:0,streak:0,best:0,stars:{}};
+
+const $=id=>document.getElementById(id);
+const board=$("board"), scroller=$("scroller");
+let slotPx=36; const ROW=58;
+
+function load(){
+  try{const d=JSON.parse(localStorage.getItem(SAVE_KEY)||"{}");
+    S.total=d.total||0; S.best=d.best||0; S.stars=d.stars||{}; S.streak=d.streak||0;
+    S.idx=Math.min(d.idx||0, LEVELS.length-1);
+  }catch(e){}
+}
+function save(){
+  localStorage.setItem(SAVE_KEY,JSON.stringify({total:S.total,best:S.best,stars:S.stars,streak:S.streak,idx:S.idx}));
+}
+
+/* ============================================================ LEVEL SETUP */
+function loadLevel(i){
+  S.idx=i; const L=LEVELS[i];
+  S.machines=L.machines.slice(); S.horizon=L.horizon; S.live=false; S.sel=null;
+  S.breaks=[];
+  S.jobs=L.jobs.map(j=>({
+    id:j.id,m:j.m,start:j.start,dur:j.dur,due:j.due,
+    elig:j.elig?j.elig.slice():L.machines.map((_,k)=>k),
+    base:{m:j.m,start:j.start}, isNew:false
+  }));
+  $("lvNum").textContent="Shift "+(i+1);
+  $("lvName").textContent=L.name;
+  $("lvSub").textContent=L.sub;
+  $("ovlTitle").textContent=L.name;
+  $("ovlText").textContent=L.sub+" Repair the plan: no overlaps, nothing late, and move as few jobs as you can.";
+  $("mTard").querySelector(".p").textContent="par "+L.par.tard;
+  $("mMove").querySelector(".p").textContent="par "+L.par.moves+" moves";
+  $("ovlStart").classList.remove("hidden");
+  $("ovlEnd").classList.add("hidden");
+  ["btnSubmit","btnReset","btnHint"].forEach(b=>$(b).disabled=true);
+  $("hTime").textContent="0s";
+  renderDots(); layout(); renderAll(); update();
+}
+
+function renderDots(){
+  $("dots").innerHTML=LEVELS.map((_,k)=>{
+    const c = k<S.idx?"done":(k===S.idx?"now":"");
+    return `<div class="dot ${c}" title="Shift ${k+1}"></div>`;
+  }).join("");
+}
+
+function layout(){
+  const avail=scroller.clientWidth||600;
+  slotPx=Math.max(26,Math.min(46,Math.floor(avail/S.horizon)));
+  document.documentElement.style.setProperty("--slot",slotPx+"px");
+  const w=slotPx*S.horizon;
+  board.style.width=w+"px";
+  board.style.height=(S.machines.length*ROW)+"px";
+  $("ruler").style.width=w+"px";
+}
+
+function renderAll(){
+  $("labels").innerHTML=S.machines.map(m=>`<div class="label">${m}</div>`).join("");
+  let r="";
+  for(let t=0;t<=S.horizon;t+=2) r+=`<div class="tick" style="left:${t*slotPx}px">${t}</div>`;
+  $("ruler").innerHTML=r;
+  let b="";
+  for(let i=0;i<S.machines.length;i++) b+=`<div class="rowbg" style="top:${i*ROW}px"></div>`;
+  b+=`<div class="grid"></div>`;
+  board.innerHTML=b;
+  S.breaks.forEach(k=>{
+    const el=document.createElement("div");
+    el.className="blk locked";
+    el.style.width=(k.dur*slotPx-4)+"px";
+    el.style.transform=`translate(${k.start*slotPx+2}px,${k.m*ROW}px)`;
+    el.innerHTML=`<div class="n">Down</div><div class="d">${k.start}–${k.start+k.dur}</div>`;
+    board.appendChild(el); k.el=el;
+  });
+  S.jobs.forEach(j=>{
+    const el=document.createElement("div");
+    el.className="blk"; el.dataset.id=j.id;
+    el.innerHTML=`<div class="n">${j.id}</div><div class="d"></div>`;
+    board.appendChild(el); j.el=el;
+    attachDrag(j,el);
+  });
+  placeAll();
+}
+
+function placeAll(){
+  S.jobs.forEach(j=>{
+    j.el.style.width=Math.max(26,j.dur*slotPx-4)+"px";
+    j.el.style.transform=`translate(${j.start*slotPx+2}px,${j.m*ROW}px)`;
+    j.el.querySelector(".d").textContent=`${j.start}–${j.start+j.dur} · due ${j.due}`;
+  });
+}
+
+/* ============================================================ DISRUPTIONS */
+function startShift(){
+  const L=LEVELS[S.idx];
+  $("ovlStart").classList.add("hidden");
+  S.live=true;
+  L.disruptions.forEach((d,i)=>{
+    if(d.type==="breakdown") S.breaks.push({m:d.m,start:d.start,dur:d.dur});
+    if(d.type==="delay"){const j=S.jobs.find(x=>x.id===d.id); if(j) j.dur+=d.add;}
+    if(d.type==="rush"){
+      const nj=d.job;
+      S.jobs.push({id:nj.id,m:nj.m,start:nj.start,dur:nj.dur,due:nj.due,
+        elig:nj.elig?nj.elig.slice():S.machines.map((_,k)=>k),base:null,isNew:true});
+    }
+    setTimeout(()=>toast(d.text),i*450);
+  });
+  renderAll(); update();
+  ["btnSubmit","btnReset","btnHint"].forEach(b=>$(b).disabled=false);
+  S.t0=Date.now();
+  clearInterval(S.timer);
+  S.timer=setInterval(()=>{$("hTime").textContent=elapsed()+"s";},250);
+}
+const elapsed=()=>Math.floor((Date.now()-S.t0)/1000);
+
+/* ============================================================ METRICS */
+function metrics(){
+  let tard=0,span=0,moves=0;
+  const bad=new Set();
+  S.jobs.forEach(j=>{
+    const end=j.start+j.dur;
+    tard+=Math.max(0,end-j.due);
+    span=Math.max(span,end);
+    if(j.base && (j.base.m!==j.m || j.base.start!==j.start)) moves++;
+    if(j.start<0 || end>S.horizon) bad.add(j.id);
+    if(!j.elig.includes(j.m)) bad.add(j.id);
+  });
+  for(let m=0;m<S.machines.length;m++){
+    const iv=[];
+    S.jobs.filter(j=>j.m===m).forEach(j=>iv.push({a:j.start,b:j.start+j.dur,id:j.id}));
+    S.breaks.filter(k=>k.m===m).forEach(k=>iv.push({a:k.start,b:k.start+k.dur,id:null}));
+    iv.sort((x,y)=>x.a-y.a);
+    for(let i=1;i<iv.length;i++){
+      if(iv[i].a < iv[i-1].b){
+        if(iv[i].id) bad.add(iv[i].id);
+        if(iv[i-1].id) bad.add(iv[i-1].id);
+      }
+    }
+  }
+  return {tard,span,moves,bad,feasible:bad.size===0};
+}
+
+function update(){
+  const M=metrics(), L=LEVELS[S.idx];
+  S.jobs.forEach(j=>{
+    const late=(j.start+j.dur)>j.due;
+    const moved=j.base && (j.base.m!==j.m||j.base.start!==j.start);
+    j.el.className="blk"+(j.isNew?" new":"")+(moved&&!late?" moved":"")+(late?" late":"")
+      +(M.bad.has(j.id)?" clash":"")+(S.sel===j.id?" sel":"");
+    if(!S.live) j.el.classList.add("pin");
+  });
+  set($("mFeas"), M.feasible?"Yes":"No", M.feasible?"ok":"bad");
+  set($("mTard"), M.tard, M.tard<=L.par.tard?"ok":(M.tard<=L.par.tard+3?"warn":"bad"));
+  set($("mMove"), M.moves, M.moves<=L.par.moves?"ok":"warn");
+  set($("mSpan"), M.span, "");
+  $("hScore").textContent=S.total; $("hStreak").textContent=S.streak; $("hBest").textContent=S.best;
+}
+function set(el,v,cls){ el.querySelector(".v").textContent=v; el.className="metric "+(cls||""); }
+
+/* ============================================================ DRAG */
+function attachDrag(j,el){
+  let drag=null;
+  el.addEventListener("pointerdown",e=>{
+    if(!S.live) return;
+    S.sel=j.id; update();
+    el.setPointerCapture(e.pointerId);
+    drag={px:e.clientX,py:e.clientY,s0:j.start,m0:j.m};
+    el.classList.add("drag");
+  });
+  el.addEventListener("pointermove",e=>{
+    if(!drag) return;
+    const ds=Math.round((e.clientX-drag.px)/slotPx);
+    const dm=Math.round((e.clientY-drag.py)/ROW);
+    const ns=clamp(drag.s0+ds,0,S.horizon-j.dur);
+    let nm=clamp(drag.m0+dm,0,S.machines.length-1);
+    if(!j.elig.includes(nm)) nm=j.m;
+    if(ns!==j.start||nm!==j.m){ j.start=ns; j.m=nm; placeAll(); update(); }
+  });
+  const end=()=>{ if(!drag)return; drag=null; el.classList.remove("drag"); update(); };
+  el.addEventListener("pointerup",end);
+  el.addEventListener("pointercancel",end);
+}
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+
+document.addEventListener("keydown",e=>{
+  if(!S.live||!S.sel) return;
+  const j=S.jobs.find(x=>x.id===S.sel); if(!j) return;
+  let done=true;
+  if(e.key==="ArrowLeft")  j.start=clamp(j.start-1,0,S.horizon-j.dur);
+  else if(e.key==="ArrowRight") j.start=clamp(j.start+1,0,S.horizon-j.dur);
+  else if(e.key==="ArrowUp"||e.key==="ArrowDown"){
+    const d=e.key==="ArrowUp"?-1:1;
+    const nm=clamp(j.m+d,0,S.machines.length-1);
+    if(j.elig.includes(nm)) j.m=nm;
+  }
+  else if(e.key==="Escape"){S.sel=null;}
+  else done=false;
+  if(done){e.preventDefault(); placeAll(); update();}
+});
+
+/* ============================================================ SUBMIT / SCORE */
+function submit(){
+  const M=metrics(), L=LEVELS[S.idx];
+  if(!M.feasible){
+    toast("Infeasible — overlapping jobs, a job on a downed machine, or past the horizon.");
+    S.jobs.filter(j=>M.bad.has(j.id)).forEach(j=>{j.el.classList.remove("clash");void j.el.offsetWidth;j.el.classList.add("clash");});
+    return;
+  }
+  clearInterval(S.timer);
+  const secs=elapsed();
+  const extraMoves=Math.max(0,M.moves-L.par.moves);
+  const timeBonus=Math.max(0,200-4*secs);
+  let score=1000 - 70*M.tard - 40*extraMoves + timeBonus;
+  score=Math.max(50,Math.round(score));
+
+  let stars=1;
+  if(M.tard<=L.par.tard) stars=2;
+  if(M.tard<=L.par.tard && M.moves<=L.par.moves) stars=3;
+
+  S.total+=score;
+  S.best=Math.max(S.best,score);
+  S.streak = stars===3 ? S.streak+1 : 0;
+  S.stars[S.idx]=Math.max(S.stars[S.idx]||0,stars);
+  save(); update();
+
+  $("endTitle").textContent = stars===3?"Perfect recovery":(stars===2?"Shift saved":"Barely held together");
+  $("endStars").innerHTML=[1,2,3].map(k=>`<span class="star ${k<=stars?"on":""}">★</span>`).join("");
+  $("endScore").innerHTML=
+    `Tardiness <b>${M.tard}</b> (par ${L.par.tard}) &nbsp;·&nbsp; Jobs moved <b>${M.moves}</b> (par ${L.par.moves})<br>`+
+    `Makespan <b>${M.span}</b> &nbsp;·&nbsp; Time bonus <b>+${timeBonus}</b> (${secs}s)<br>`+
+    `Shift score <b>${score}</b> &nbsp;·&nbsp; Total <b>${S.total}</b>${S.streak>1?` &nbsp;·&nbsp; <b>${S.streak} in a row</b>`:""}`;
+  $("btnNext").textContent = S.idx<LEVELS.length-1 ? "Next shift" : "Play again";
+  $("ovlEnd").classList.remove("hidden");
+  S.live=false;
+  if(stars===3) confetti();
+}
+
+/* ============================================================ HINT */
+function hint(){
+  const M=metrics();
+  if(!M.feasible){
+    const j=S.jobs.find(x=>M.bad.has(x.id));
+    toast(j.id+" is in conflict — slide it to a free window or another machine.");
+    return;
+  }
+  const late=S.jobs.filter(j=>j.start+j.dur>j.due).sort((a,b)=>a.due-b.due)[0];
+  if(late){ toast(late.id+" finishes at "+(late.start+late.dur)+" but is due "+late.due+". Pull it earlier or onto a quieter machine."); return; }
+  const L=LEVELS[S.idx];
+  if(M.moves>L.par.moves){ toast("Feasible and on time — now put a job back where it started. Par is "+L.par.moves+" moves."); return; }
+  toast("That's par. Lock it in.", true);
+}
+
+/* ============================================================ UI BITS */
+function toast(msg,good){
+  const t=document.createElement("div");
+  t.className="toast"+(good?" good":""); t.textContent=msg;
+  $("toasts").appendChild(t);
+  setTimeout(()=>{t.style.transition="opacity .4s";t.style.opacity=0;setTimeout(()=>t.remove(),400);},3000);
+}
+function confetti(){
+  const cols=["#5C7A63","#B9714E","#B48A2E","#8C877D","#D8CDBB"];
+  for(let i=0;i<40;i++){
+    const c=document.createElement("div");
+    c.className="confetti";
+    c.style.background=cols[i%cols.length];
+    c.style.left=(50+(i%2?1:-1)*Math.random()*36)+"%";
+    c.style.top="32%";
+    document.body.appendChild(c);
+    const dx=(Math.random()-.5)*640, dy=280+Math.random()*380, rot=Math.random()*720;
+    c.animate([{transform:"translate(0,0) rotate(0)",opacity:1},
+               {transform:`translate(${dx}px,${dy}px) rotate(${rot}deg)`,opacity:0}],
+      {duration:1300+Math.random()*600,easing:"cubic-bezier(.2,.7,.3,1)"}).onfinish=()=>c.remove();
+  }
+}
+
+/* ============================================================ WIRING */
+$("btnStart").onclick=startShift;
+$("btnSubmit").onclick=submit;
+$("btnReset").onclick=()=>{
+  const L=LEVELS[S.idx];
+  S.jobs.forEach(j=>{ if(j.base){j.m=j.base.m;j.start=j.base.start;} });
+  const rush=L.disruptions.find(d=>d.type==="rush");
+  if(rush){const j=S.jobs.find(x=>x.id===rush.job.id); if(j){j.m=rush.job.m;j.start=rush.job.start;}}
+  placeAll(); update(); toast("Back to the original plan.");
+};
+$("btnHint").onclick=hint;
+$("btnNext").onclick=()=>{
+  const n=S.idx<LEVELS.length-1?S.idx+1:0;
+  if(n===0){S.total=0;S.streak=0;}
+  save(); loadLevel(n);
+};
+$("btnRetry").onclick=()=>loadLevel(S.idx);
+$("btnWipe").onclick=()=>{localStorage.removeItem(SAVE_KEY);S.total=0;S.best=0;S.streak=0;S.stars={};loadLevel(0);toast("Save cleared.",true);};
+window.addEventListener("resize",()=>{layout();renderAll();update();});
+board.addEventListener("pointerdown",e=>{ if(e.target===board||e.target.classList.contains("grid")){S.sel=null;update();} });
+
+load(); loadLevel(S.idx);
+</script>
+</body>
+</html>
