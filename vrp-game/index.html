@@ -1,0 +1,648 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Route Runner — a Vehicle Routing Problem game</title>
+<style>
+  :root{
+    --bg:#fbfbfa;
+    --paper:#ffffff;
+    --line:#e6e5e1;
+    --line2:#f0efec;
+    --ink:#16161a;
+    --dim:#8c8c86;
+    --faint:#b6b5ae;
+    --accent:#16161a;
+    --bad:#b4453a;
+    --r:2px;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;background:var(--bg);color:var(--ink);
+    font:13.5px/1.5 ui-sans-serif,-apple-system,"SF Pro Text",Inter,"Helvetica Neue",sans-serif;
+    -webkit-font-smoothing:antialiased;overflow:hidden;
+  }
+  #app{display:flex;height:100vh;gap:0}
+  #stage{flex:1;min-width:0;position:relative;background:var(--paper);overflow:hidden}
+  canvas{display:block;width:100%;height:100%;cursor:crosshair}
+  #side{width:312px;flex:none;display:flex;flex-direction:column;overflow:auto;
+    background:var(--bg);border-left:1px solid var(--line)}
+  .card{padding:20px 22px;border-bottom:1px solid var(--line)}
+  .card:last-child{border-bottom:0}
+
+  h1{margin:0;font:400 20px/1.15 "Times New Roman",Georgia,serif;letter-spacing:.2px}
+  h1 small{display:block;font:400 9.5px/1 ui-sans-serif,sans-serif;color:var(--faint);
+    letter-spacing:.22em;text-transform:uppercase;margin-top:8px}
+  .row{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+  .badges{display:flex;gap:18px;margin-top:16px}
+  .badge{font-size:11px;color:var(--faint);letter-spacing:.06em}
+  .badge b{display:block;color:var(--ink);font:400 17px/1.2 "Times New Roman",Georgia,serif;
+    font-variant-numeric:tabular-nums;margin-top:2px}
+
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line);
+    border:1px solid var(--line)}
+  .stat{background:var(--paper);padding:11px 12px}
+  .stat .k{font-size:9.5px;letter-spacing:.16em;text-transform:uppercase;color:var(--faint)}
+  .stat .v{font:400 21px/1.15 "Times New Roman",Georgia,serif;font-variant-numeric:tabular-nums;margin-top:4px}
+
+  .bar{height:2px;background:var(--line);overflow:hidden;margin-top:9px}
+  .bar>i{display:block;height:100%;width:0;background:var(--ink);transition:width .2s ease}
+  .bar.hot>i{background:var(--bad)}
+  .lbl{font-size:9.5px;letter-spacing:.18em;text-transform:uppercase;color:var(--faint);margin-bottom:12px}
+
+  .routes{display:flex;flex-direction:column;max-height:196px;overflow:auto}
+  .route{display:flex;align-items:center;gap:10px;padding:8px 0;font-size:12px;
+    border-bottom:1px solid var(--line2)}
+  .route:last-child{border-bottom:0}
+  .dot{width:7px;height:7px;border-radius:99px;flex:none;background:currentColor}
+  .route .seq{color:var(--dim);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    font-variant-numeric:tabular-nums}
+  .route .m{font-variant-numeric:tabular-nums;color:var(--ink);font-size:11.5px}
+  .empty{color:var(--faint);font-size:12px;padding:8px 0}
+
+  .btns{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  button{font:inherit;font-size:12.5px;color:var(--ink);background:var(--paper);
+    border:1px solid var(--line);border-radius:var(--r);padding:10px 8px;cursor:pointer;
+    transition:.15s ease;text-align:center;display:flex;align-items:center;justify-content:center;gap:6px}
+  button:hover{border-color:var(--ink)}
+  button.p{background:var(--ink);color:#fff;border-color:var(--ink)}
+  button.p:hover{background:#000}
+  button.p kbd{color:rgba(255,255,255,.55);border-color:rgba(255,255,255,.25)}
+  button.g{grid-column:1 / -1}
+  button:disabled{opacity:.35;cursor:not-allowed;border-color:var(--line)}
+  kbd{border:1px solid var(--line);border-radius:2px;padding:1px 4px;
+    font:10px ui-monospace,Menlo,monospace;color:var(--faint)}
+
+  .help{font-size:12px;color:var(--dim);line-height:1.85}
+  .help b{color:var(--ink);font-weight:500}
+  .help p{margin:0 0 9px}
+  .help p:last-child{margin:0}
+
+  #msg{position:absolute;left:50%;top:22px;transform:translateX(-50%);background:var(--ink);
+    color:#fff;border-radius:99px;padding:7px 15px;font-size:12px;pointer-events:none;
+    opacity:0;transition:opacity .22s;white-space:nowrap;letter-spacing:.01em}
+  #msg.show{opacity:1}
+  #msg.err{background:var(--bad)}
+
+  #overlay{position:absolute;inset:0;display:none;place-items:center;background:rgba(251,251,250,.86);
+    backdrop-filter:blur(3px);z-index:5}
+  #overlay.show{display:grid}
+  .modal{width:min(430px,88%);background:var(--paper);border:1px solid var(--line);
+    padding:34px 34px 28px;text-align:center;box-shadow:0 24px 60px rgba(20,20,18,.08)}
+  .modal h2{margin:0;font:400 25px/1.2 "Times New Roman",Georgia,serif}
+  .stars{font-size:19px;letter-spacing:.5em;margin:16px 0 10px;color:var(--ink)}
+  .modal .sub{color:var(--dim);font-size:12px}
+  .cmp{display:grid;grid-template-columns:1fr 1fr 1fr;gap:1px;background:var(--line);
+    border:1px solid var(--line);margin:24px 0 18px}
+  .modal .btns{margin-top:4px}
+  .tag{display:block;font-size:11.5px;color:var(--faint);line-height:1.7}
+
+  ::-webkit-scrollbar{width:7px;height:7px}
+  ::-webkit-scrollbar-thumb{background:#dcdbd6;border-radius:9px}
+  ::-webkit-scrollbar-track{background:transparent}
+  @media (max-width:900px){
+    body{overflow:auto}
+    #app{flex-direction:column;height:auto}
+    #stage{height:56vh;border-bottom:1px solid var(--line)}
+    #side{width:auto;border-left:0}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="stage">
+    <canvas id="cv"></canvas>
+    <div id="msg"></div>
+    <div id="overlay"><div class="modal">
+      <h2 id="mTitle">Level clear</h2>
+      <div class="stars" id="mStars">◆◆◆</div>
+      <div class="sub" id="mSub"></div>
+      <div class="cmp">
+        <div class="stat"><div class="k">Your cost</div><div class="v" id="mYou">0</div></div>
+        <div class="stat"><div class="k">Par</div><div class="v" id="mPar">0</div></div>
+        <div class="stat"><div class="k">Points</div><div class="v" id="mPts">0</div></div>
+      </div>
+      <div class="tag" id="mNote"></div>
+      <div class="btns" style="margin-top:14px">
+        <button id="bGhost">Show par routes</button>
+        <button class="p" id="bNext">Next level →</button>
+      </div>
+    </div></div>
+  </div>
+
+  <div id="side">
+    <div class="card">
+      <h1>Route Runner <small>Vehicle Routing Problem</small></h1>
+      <div class="badges">
+        <span class="badge">Level <b id="bLevel">1</b></span>
+        <span class="badge">Score <b id="bScore">0</b></span>
+        <span class="badge">Best <b id="bBest">0</b></span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="grid">
+        <div class="stat"><div class="k">Stops left</div><div class="v" id="sLeft">0</div></div>
+        <div class="stat"><div class="k">Vehicles</div><div class="v" id="sVeh">0/0</div></div>
+        <div class="stat"><div class="k">Your cost</div><div class="v" id="sDist">0</div></div>
+        <div class="stat"><div class="k">Par</div><div class="v" id="sPar">0</div></div>
+      </div>
+      <div style="margin-top:11px">
+        <div class="row"><span class="lbl" style="margin:0">Vehicle load</span>
+          <span class="lbl" style="margin:0" id="sLoadTxt">0 / 0</span></div>
+        <div class="bar" id="loadBar"><i></i></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="lbl">Routes</div>
+      <div class="routes" id="routeList"></div>
+    </div>
+
+    <div class="card">
+      <div class="btns">
+        <button id="bClose">Close route <kbd>Space</kbd></button>
+        <button id="bUndo">Undo <kbd>Z</kbd></button>
+        <button id="bHint">Hint <kbd>H</kbd></button>
+        <button id="bReset">Restart <kbd>R</kbd></button>
+        <button class="p g" id="bSubmit">Deliver <kbd>Enter</kbd></button>
+        <button class="g" id="bAuto">Watch the solver</button>
+      </div>
+    </div>
+
+    <div class="card help">
+      <p><b>Goal.</b> Serve every stop with the least total distance.</p>
+      <p><b>Click a stop</b> to load it onto the current vehicle. Every vehicle leaves from and returns
+      to the <b>depot</b> (the square) and cannot exceed its capacity.</p>
+      <p><b>Close the route</b> to send that vehicle home and begin the next one.</p>
+      <p>Par is a savings-heuristic plus 2-opt solution. Match it for three marks.</p>
+    </div>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+/* ---------- tiny utils ---------- */
+const $ = id => document.getElementById(id);
+const PAL = ['#16161a','#b4453a','#3f5b86','#4a6b57','#a1793f','#7a5a80','#2f7a78','#96604a','#5c6270','#8a7a3f'];
+const INK = '#16161a', FAINT = '#b6b5ae', DIM = '#8c8c86';
+function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+
+/* ---------- game state ---------- */
+const G = {
+  level: 1, score: 0, best: +(localStorage.getItem('rr_best')||0),
+  inst: null,          // {nodes:[{x,y,d}], cap, veh, D:Float64Array}
+  routes: [],          // finished routes: arrays of node indices (1..n)
+  cur: [],             // route being built
+  assigned: null,      // Uint8Array
+  par: 0, parRoutes: null, showGhost: false,
+  hover: -1, hint: -1, t0: 0, done: false, anim: 0, pulse: []
+};
+
+/* ---------- instance generation ---------- */
+function genInstance(level){
+  const rnd = mulberry32(0x9E37 + level * 7919);
+  const n = Math.min(6 + level * 2, 26);
+  const nodes = [{x:50, y:50, d:0}];
+  // depot slightly off-centre for flavour
+  nodes[0].x = 34 + rnd()*32; nodes[0].y = 36 + rnd()*28;
+  // cluster-ish placement so routes feel meaningful
+  const clusters = Math.max(2, Math.round(n/5));
+  const cs = Array.from({length:clusters}, () => ({x: 12+rnd()*76, y: 12+rnd()*76}));
+  for(let i=0;i<n;i++){
+    const c = cs[i % clusters];
+    let x = c.x + (rnd()-.5)*34, y = c.y + (rnd()-.5)*34;
+    x = Math.max(6, Math.min(94, x)); y = Math.max(7, Math.min(93, y));
+    nodes.push({x, y, d: 3 + Math.floor(rnd()*10)});
+  }
+  const total = nodes.reduce((s,v)=>s+v.d, 0);
+  const targetVeh = Math.max(2, Math.round(n/5));
+  const cap = Math.ceil(total / targetVeh * 1.15);
+
+  const D = new Float64Array((n+1)*(n+1));
+  for(let i=0;i<=n;i++) for(let j=0;j<=n;j++){
+    D[i*(n+1)+j] = Math.hypot(nodes[i].x-nodes[j].x, nodes[i].y-nodes[j].y);
+  }
+  return {n, nodes, cap, veh: targetVeh + 1, D, dist:(a,b)=>D[a*(n+1)+b]};
+}
+
+/* ---------- heuristic solver: Clarke-Wright + 2-opt + relocate ---------- */
+function routeCost(inst, r){
+  if(!r.length) return 0;
+  let c = inst.dist(0, r[0]);
+  for(let i=1;i<r.length;i++) c += inst.dist(r[i-1], r[i]);
+  return c + inst.dist(r[r.length-1], 0);
+}
+const totalCost = (inst, rs) => rs.reduce((s,r)=>s+routeCost(inst,r), 0);
+const load = (inst, r) => r.reduce((s,i)=>s+inst.nodes[i].d, 0);
+
+function clarkeWright(inst){
+  const n = inst.n, cap = inst.cap;
+  let routes = [], of = new Int32Array(n+1).fill(-1);
+  for(let i=1;i<=n;i++){ of[i] = routes.length; routes.push([i]); }
+  const sav = [];
+  for(let i=1;i<=n;i++) for(let j=i+1;j<=n;j++)
+    sav.push([inst.dist(0,i)+inst.dist(0,j)-inst.dist(i,j), i, j]);
+  sav.sort((a,b)=>b[0]-a[0]);
+  for(const [,i,j] of sav){
+    const ri = of[i], rj = of[j];
+    if(ri === rj || ri < 0 || rj < 0) continue;
+    const A = routes[ri], B = routes[rj];
+    if(load(inst,A) + load(inst,B) > cap) continue;
+    let merged = null;
+    if(A[A.length-1] === i && B[0] === j)                merged = A.concat(B);
+    else if(A[A.length-1] === i && B[B.length-1] === j)  merged = A.concat(B.slice().reverse());
+    else if(A[0] === i && B[B.length-1] === j)           merged = B.concat(A);
+    else if(A[0] === i && B[0] === j)                    merged = A.slice().reverse().concat(B);
+    if(!merged) continue;
+    routes[ri] = merged; routes[rj] = null;
+    for(const v of merged) of[v] = ri;
+  }
+  return routes.filter(Boolean);
+}
+function twoOpt(inst, r){
+  if(r.length < 4) return r;
+  let best = r.slice(), improved = true;
+  while(improved){
+    improved = false;
+    for(let i=0;i<best.length-1;i++){
+      for(let k=i+1;k<best.length;k++){
+        const a = i===0 ? 0 : best[i-1], b = best[i];
+        const c = best[k], d = k===best.length-1 ? 0 : best[k+1];
+        const delta = inst.dist(a,c)+inst.dist(b,d)-inst.dist(a,b)-inst.dist(c,d);
+        if(delta < -1e-9){
+          const seg = best.slice(i,k+1).reverse();
+          best = best.slice(0,i).concat(seg, best.slice(k+1));
+          improved = true;
+        }
+      }
+    }
+  }
+  return best;
+}
+function relocate(inst, routes){
+  let improved = true, guard = 0;
+  while(improved && guard++ < 60){
+    improved = false;
+    for(let a=0;a<routes.length;a++){
+      for(let p=0;p<routes[a].length;p++){
+        const v = routes[a][p];
+        const without = routes[a].slice(0,p).concat(routes[a].slice(p+1));
+        const gain = routeCost(inst, routes[a]) - routeCost(inst, without);
+        let bestB=-1, bestPos=-1, bestAdd=Infinity;
+        for(let b=0;b<routes.length;b++){
+          if(b===a) continue;
+          if(load(inst, routes[b]) + inst.nodes[v].d > inst.cap) continue;
+          for(let q=0;q<=routes[b].length;q++){
+            const cand = routes[b].slice(0,q).concat([v], routes[b].slice(q));
+            const add = routeCost(inst, cand) - routeCost(inst, routes[b]);
+            if(add < bestAdd){ bestAdd = add; bestB = b; bestPos = q; }
+          }
+        }
+        if(bestB >= 0 && bestAdd < gain - 1e-9){
+          routes[a] = without;
+          routes[bestB] = routes[bestB].slice(0,bestPos).concat([v], routes[bestB].slice(bestPos));
+          routes = routes.filter(r=>r.length);
+          improved = true;
+          a = routes.length; break;
+        }
+      }
+    }
+  }
+  return routes.filter(r=>r.length);
+}
+function solve(inst){
+  let rs = clarkeWright(inst);
+  for(let pass=0; pass<3; pass++){
+    rs = rs.map(r => twoOpt(inst, r));
+    rs = relocate(inst, rs);
+  }
+  rs = rs.map(r => twoOpt(inst, r));
+  return rs;
+}
+
+/* ---------- level setup ---------- */
+function newLevel(level){
+  G.level = level;
+  G.inst = genInstance(level);
+  G.parRoutes = solve(G.inst);
+  G.par = totalCost(G.inst, G.parRoutes);
+  G.inst.veh = Math.max(G.inst.veh, G.parRoutes.length);
+  resetRun();
+  G.t0 = performance.now();
+  $('overlay').classList.remove('show');
+  G.showGhost = false;
+  flash(`Level ${level} — ${G.inst.n} stops, capacity ${G.inst.cap}, par ${Math.round(G.par)}`);
+  render();
+}
+function resetRun(){
+  G.routes = []; G.cur = []; G.done = false; G.hint = -1;
+  G.assigned = new Uint8Array(G.inst.n + 1);
+  sync();
+}
+
+/* ---------- player actions ---------- */
+const curLoad = () => load(G.inst, G.cur);
+const playerCost = () => totalCost(G.inst, G.routes) + routeCost(G.inst, G.cur);
+const remaining = () => { let c=0; for(let i=1;i<=G.inst.n;i++) if(!G.assigned[i]) c++; return c; };
+
+function addStop(i){
+  if(G.done || i < 1) return;
+  if(G.cur.length && G.cur[G.cur.length-1] === i){ undo(); return; }
+  if(G.assigned[i]) return flash('That stop is already served', true);
+  if(curLoad() + G.inst.nodes[i].d > G.inst.cap)
+    return flash('Vehicle is full — close the route', true);
+  if(!G.cur.length && G.routes.length >= G.inst.veh)
+    return flash(`Only ${G.inst.veh} vehicles available`, true);
+  G.cur.push(i); G.assigned[i] = 1; G.hint = -1;
+  G.pulse.push({x:G.inst.nodes[i].x, y:G.inst.nodes[i].y, t:0, c:PAL[G.routes.length % PAL.length]});
+  sync();
+}
+function undo(){
+  if(G.done) return;
+  if(G.cur.length){ G.assigned[G.cur.pop()] = 0; }
+  else if(G.routes.length){ G.cur = G.routes.pop(); }
+  G.hint = -1; sync();
+}
+function closeRoute(){
+  if(G.done) return;
+  if(!G.cur.length) return flash('Load at least one stop first', true);
+  G.routes.push(G.cur); G.cur = []; G.hint = -1;
+  flash(`Vehicle ${G.routes.length} dispatched`);
+  sync();
+}
+function hint(){
+  if(G.done) return;
+  const from = G.cur.length ? G.cur[G.cur.length-1] : 0;
+  let best = -1, bd = Infinity;
+  for(let i=1;i<=G.inst.n;i++){
+    if(G.assigned[i]) continue;
+    if(curLoad() + G.inst.nodes[i].d > G.inst.cap) continue;
+    const d = G.inst.dist(from, i);
+    if(d < bd){ bd = d; best = i; }
+  }
+  G.hint = best;
+  flash(best < 0 ? 'Nothing else fits — close the route' : 'Nearest stop that fits is glowing');
+}
+function submit(){
+  if(G.done) return;
+  if(remaining() > 0) return flash(`${remaining()} stops still unserved`, true);
+  if(G.cur.length) closeRoute();
+  if(G.routes.length > G.inst.veh) return flash('Too many vehicles used', true);
+  G.done = true;
+  finish();
+}
+
+/* ---------- scoring ---------- */
+function finish(){
+  const you = totalCost(G.inst, G.routes);
+  const ratio = you / G.par;
+  const secs = (performance.now() - G.t0)/1000;
+  let stars = ratio <= 1.001 ? 3 : ratio <= 1.07 ? 2 : ratio <= 1.20 ? 1 : 0;
+  const timeBonus = Math.max(0, Math.round(220 - secs * 2));
+  const pts = Math.max(0, Math.round(1000 * Math.min(1.35, G.par / you)) + stars * 250 + timeBonus);
+  G.score += pts;
+  if(G.score > G.best){ G.best = G.score; localStorage.setItem('rr_best', G.best); }
+
+  $('mTitle').textContent = stars === 3 ? 'Par beaten!' : stars ? 'Level clear' : 'Delivered — but pricey';
+  $('mStars').textContent = '◆◆◆◇◇◇'.slice(3 - stars, 6 - stars);
+  $('mSub').textContent = `${Math.abs(ratio*100 - 100).toFixed(1)}% ${ratio >= 1 ? 'above' : 'below'} par — ${G.routes.length} vehicles — ${secs.toFixed(0)}s`;
+  $('mYou').textContent = Math.round(you);
+  $('mPar').textContent = Math.round(G.par);
+  $('mPts').textContent = pts;
+  $('mNote').textContent = stars === 3
+    ? 'You matched or beat the savings heuristic. That is genuinely hard.'
+    : `Time bonus +${timeBonus}. Try grouping nearby stops onto the same vehicle.`;
+  $('overlay').classList.add('show');
+  sync();
+}
+
+/* ---------- solver demo ---------- */
+function autoSolve(){
+  resetRun();
+  const flat = [];
+  G.parRoutes.forEach(r => { r.forEach(i => flat.push({i})); flat.push({close:true}); });
+  let k = 0;
+  const step = () => {
+    if(k >= flat.length){ submit(); return; }
+    const a = flat[k++];
+    if(a.close) closeRoute(); else addStop(a.i);
+    setTimeout(step, 110);
+  };
+  flash('Solver: Clarke-Wright savings → 2-opt → relocate');
+  setTimeout(step, 400);
+}
+
+/* ---------- HUD ---------- */
+function sync(){
+  const I = G.inst;
+  $('bLevel').textContent = G.level;
+  $('bScore').textContent = G.score;
+  $('bBest').textContent = G.best;
+  $('sLeft').textContent = remaining();
+  $('sVeh').textContent = `${G.routes.length + (G.cur.length?1:0)}/${I.veh}`;
+  $('sDist').textContent = Math.round(playerCost());
+  $('sPar').textContent = Math.round(G.par);
+  const l = curLoad(), pct = Math.min(100, l / I.cap * 100);
+  $('sLoadTxt').textContent = `${l} / ${I.cap}`;
+  $('loadBar').classList.toggle('hot', pct > 80);
+  $('loadBar').firstElementChild.style.width = pct + '%';
+
+  const list = $('routeList'); list.innerHTML = '';
+  const all = G.routes.map((r,k)=>({r,k,open:false}));
+  if(G.cur.length) all.push({r:G.cur, k:G.routes.length, open:true});
+  if(!all.length) list.innerHTML = '<div class="empty">Nothing loaded yet — click a stop to begin.</div>';
+  all.forEach(({r,k,open})=>{
+    const el = document.createElement('div');
+    el.className = 'route';
+    el.innerHTML = `<span class="dot" style="color:${PAL[k%PAL.length]}"></span>
+      <span class="seq">${open?'▶ ':''}D → ${r.join(' → ')} → D</span>
+      <span class="m">${load(G.inst,r)}u · ${Math.round(routeCost(G.inst,r))}km</span>`;
+    list.appendChild(el);
+  });
+  $('bSubmit').disabled = remaining() > 0 || G.done;
+}
+let msgT;
+function flash(t, err){
+  const m = $('msg'); m.textContent = t;
+  m.classList.toggle('err', !!err); m.classList.add('show');
+  clearTimeout(msgT); msgT = setTimeout(()=>m.classList.remove('show'), 1900);
+}
+
+/* ---------- rendering ---------- */
+const cv = $('cv'), ctx = cv.getContext('2d');
+let W = 0, H = 0, PAD = 46;
+function resize(){
+  const r = cv.parentElement.getBoundingClientRect(), dpr = devicePixelRatio || 1;
+  cv.width = r.width * dpr; cv.height = r.height * dpr;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  W = r.width; H = r.height;
+}
+const SX = x => PAD + x/100 * (W - PAD*2);
+const SY = y => PAD + y/100 * (H - PAD*2);
+
+function nodeAt(mx,my){
+  let best=-1, bd=22;
+  for(let i=0;i<=G.inst.n;i++){
+    const d = Math.hypot(SX(G.inst.nodes[i].x)-mx, SY(G.inst.nodes[i].y)-my);
+    if(d < bd){ bd = d; best = i; }
+  }
+  return best;
+}
+function radius(i){ return i===0 ? 9 : 6.5 + G.inst.nodes[i].d * 0.38; }
+
+function drawPath(r, color, opts={}){
+  if(!r.length) return;
+  const pts = [0, ...r, 0].map(i => [SX(G.inst.nodes[i].x), SY(G.inst.nodes[i].y)]);
+  ctx.save();
+  ctx.lineJoin = ctx.lineCap = 'round';
+  if(opts.dash) ctx.setLineDash(opts.dash);
+  ctx.strokeStyle = color;
+  ctx.globalAlpha = opts.alpha ?? 1;
+  ctx.lineWidth = opts.w ?? 1.6;
+  ctx.beginPath();
+  ctx.moveTo(pts[0][0], pts[0][1]);
+  for(let i=1;i<pts.length;i++) ctx.lineTo(pts[i][0], pts[i][1]);
+  ctx.stroke();
+  ctx.restore();
+
+  // direction arrows
+  if(!opts.ghost){
+    for(let i=1;i<pts.length;i++){
+      const [x1,y1]=pts[i-1], [x2,y2]=pts[i];
+      const mx=(x1+x2)/2, my=(y1+y2)/2, a=Math.atan2(y2-y1, x2-x1);
+      ctx.save();
+      ctx.fillStyle = color; ctx.globalAlpha = opts.alpha ?? 1;
+      ctx.translate(mx,my); ctx.rotate(a);
+      ctx.beginPath(); ctx.moveTo(4.5,0); ctx.lineTo(-3,2.7); ctx.lineTo(-3,-2.7); ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }
+  }
+}
+
+function render(){
+  if(!G.inst) return;
+  ctx.clearRect(0,0,W,H);
+
+  // frame + grid
+  ctx.save();
+  ctx.strokeStyle = '#f1f0ec'; ctx.lineWidth = 1;
+  for(let g=1; g<10; g++){
+    const x = Math.round(SX(g*10))+.5, y = Math.round(SY(g*10))+.5;
+    ctx.beginPath(); ctx.moveTo(x, PAD-18); ctx.lineTo(x, H-PAD+18); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(PAD-18, y); ctx.lineTo(W-PAD+18, y); ctx.stroke();
+  }
+  ctx.strokeStyle = '#e6e5e1';
+  ctx.strokeRect(Math.round(PAD-18)+.5, Math.round(PAD-18)+.5,
+                 Math.round(W-(PAD-18)*2), Math.round(H-(PAD-18)*2));
+  ctx.restore();
+
+  // ghost (par) routes
+  if(G.showGhost) G.parRoutes.forEach(r => drawPath(r, '#b6b5ae', {ghost:true, alpha:.85, w:1, dash:[3,4]}));
+
+  // finished + current routes
+  G.routes.forEach((r,k)=>drawPath(r, PAL[k%PAL.length], {alpha:1}));
+  if(G.cur.length) drawPath(G.cur, PAL[G.routes.length%PAL.length], {alpha:1, dash:[6,4]});
+
+  // rubber band to cursor
+  if(!G.done && G.hover > 0 && !G.assigned[G.hover]){
+    const from = G.cur.length ? G.cur[G.cur.length-1] : 0;
+    const overload = curLoad() + G.inst.nodes[G.hover].d > G.inst.cap;
+    ctx.save();
+    ctx.strokeStyle = overload ? 'rgba(180,69,58,.5)' : 'rgba(22,22,26,.22)';
+    ctx.setLineDash([3,4]); ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(SX(G.inst.nodes[from].x), SY(G.inst.nodes[from].y));
+    ctx.lineTo(SX(G.inst.nodes[G.hover].x), SY(G.inst.nodes[G.hover].y));
+    ctx.stroke(); ctx.restore();
+  }
+
+  // pulses
+  G.pulse = G.pulse.filter(p => p.t < 1);
+  G.pulse.forEach(p=>{
+    p.t += 0.05;
+    ctx.save(); ctx.globalAlpha = (1-p.t)*.5; ctx.strokeStyle = p.c; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(SX(p.x), SY(p.y), 9 + p.t*26, 0, 7); ctx.stroke(); ctx.restore();
+  });
+
+  // nodes
+  const t = performance.now()/1000;
+  for(let i=G.inst.n; i>=0; i--){
+    const nd = G.inst.nodes[i], x = SX(nd.x), y = SY(nd.y), r = radius(i);
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    if(i === 0){
+      ctx.fillStyle = INK;
+      ctx.fillRect(x-r, y-r, r*2, r*2);
+      ctx.fillStyle = '#fff'; ctx.font = '500 10px ui-sans-serif,sans-serif';
+      ctx.fillText('D', x, y+.5);
+      ctx.fillStyle = DIM; ctx.font = '9.5px ui-sans-serif,sans-serif';
+      ctx.fillText('DEPOT', x, y + r + 12);
+      continue;
+    }
+    const served = G.assigned[i];
+    const isHint = G.hint === i;
+    const isHover = G.hover === i;
+    if(isHint){
+      ctx.save(); ctx.globalAlpha = .25 + .35*Math.sin(t*4);
+      ctx.strokeStyle = INK; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.arc(x, y, r + 7 + Math.sin(t*4)*1.5, 0, 7); ctx.stroke(); ctx.restore();
+    }
+    ctx.fillStyle = served ? '#f4f3f0' : '#fff';
+    ctx.strokeStyle = served ? '#dcdbd6' : (isHover ? INK : '#c9c8c2');
+    ctx.lineWidth = isHover ? 1.4 : 1;
+    ctx.beginPath(); ctx.arc(x, y, r, 0, 7); ctx.fill(); ctx.stroke();
+
+    ctx.fillStyle = served ? FAINT : INK;
+    ctx.font = '400 ' + Math.max(9, Math.min(12, r)) + 'px ui-sans-serif,sans-serif';
+    ctx.fillText(String(nd.d), x, y+.5);
+    if(isHover && !served){
+      ctx.fillStyle = DIM; ctx.font = '10px ui-sans-serif,sans-serif';
+      ctx.fillText(`stop ${i} — ${nd.d} units`, x, y - r - 10);
+    }
+  }
+  requestAnimationFrame(render);
+}
+
+/* ---------- input ---------- */
+cv.addEventListener('mousemove', e => {
+  const r = cv.getBoundingClientRect();
+  G.hover = nodeAt(e.clientX - r.left, e.clientY - r.top);
+  cv.style.cursor = G.hover >= 0 ? 'pointer' : 'crosshair';
+});
+cv.addEventListener('mouseleave', () => G.hover = -1);
+cv.addEventListener('click', e => {
+  const r = cv.getBoundingClientRect();
+  const i = nodeAt(e.clientX - r.left, e.clientY - r.top);
+  if(i === 0) closeRoute();
+  else if(i > 0) addStop(i);
+});
+cv.addEventListener('contextmenu', e => { e.preventDefault(); undo(); });
+addEventListener('keydown', e => {
+  const k = e.key.toLowerCase();
+  if(k === ' '){ e.preventDefault(); closeRoute(); }
+  else if(k === 'z'){ undo(); }
+  else if(k === 'r'){ resetRun(); flash('Restarted'); }
+  else if(k === 'h'){ hint(); }
+  else if(k === 'enter'){ G.done ? newLevel(G.level+1) : submit(); }
+  else if(k === 'g'){ G.showGhost = !G.showGhost; }
+});
+addEventListener('resize', resize);
+
+$('bClose').onclick  = closeRoute;
+$('bUndo').onclick   = undo;
+$('bReset').onclick  = () => { resetRun(); flash('Restarted'); };
+$('bHint').onclick   = hint;
+$('bSubmit').onclick = submit;
+$('bAuto').onclick   = autoSolve;
+$('bNext').onclick   = () => newLevel(G.level + 1);
+$('bGhost').onclick  = () => { G.showGhost = !G.showGhost; $('bGhost').textContent = G.showGhost ? 'Hide par routes' : 'Show par routes'; };
+
+/* ---------- boot ---------- */
+resize();
+newLevel(1);
+</script>
+</body>
+</html>
